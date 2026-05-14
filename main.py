@@ -283,7 +283,7 @@ Redige un rapport court en francais avec cette structure:
 Le rapport doit etre clair, professionnel et facile a comprendre.
 """
 
-        model_gemini = genai.GenerativeModel("gemini-1.5-flash")
+        model_gemini = genai.GenerativeModel("gemini-2.5-flash")
 
         response = model_gemini.generate_content(prompt)
 
