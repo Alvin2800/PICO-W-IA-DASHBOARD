@@ -9,9 +9,6 @@ app = Flask(__name__)
 # CONNEXION MYSQL RAILWAY
 # =========================
 
-
-
-
 def get_db_connection():
 
     return mysql.connector.connect(
@@ -63,72 +60,59 @@ def home():
 # ROUTE RECEPTION DATA
 # =========================
 
-@app.route("/test-db")
-def test_db():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "status": "success",
-            "message": "Connexion MySQL OK",
-            "result": result
-        })
-
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
 @app.route("/data")
-def receive_data():
-    try:
-        device_id = request.args.get("device_id", "pico_001")
-        fuel_level = request.args.get("fuel_level")
 
-        if fuel_level is None:
-            return jsonify({"error": "fuel_level manquant"}), 400
+def receive_data():
+
+    device_id = request.args.get("device_id", "pico_001")
+    fuel_level = request.args.get("fuel_level")
+
+    if fuel_level is None:
+
+        return jsonify({
+            "error": "fuel_level manquant"
+        }), 400
+
+    try:
 
         fuel_level = float(fuel_level)
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS fuel_measurements (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                timestamp DATETIME,
-                device_id VARCHAR(50),
-                fuel_level FLOAT
-            )
-        """)
-
-        cursor.execute("""
-            INSERT INTO fuel_measurements (timestamp, device_id, fuel_level)
-            VALUES (%s, %s, %s)
-        """, (datetime.now(), device_id, fuel_level))
-
-        conn.commit()
-        cursor.close()
-        conn.close()
+    except:
 
         return jsonify({
-            "status": "success",
-            "device_id": device_id,
-            "fuel_level": fuel_level
-        })
+            "error": "fuel_level invalide"
+        }), 400
 
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+
+        INSERT INTO fuel_measurements
+        (timestamp, device_id, fuel_level)
+
+        VALUES (%s, %s, %s)
+
+    """, (
+
+        datetime.now(),
+        device_id,
+        fuel_level
+
+    ))
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+
+        "status": "success",
+        "device_id": device_id,
+        "fuel_level": fuel_level
+
+    })
 
 # =========================
 # ROUTE HISTORIQUE
