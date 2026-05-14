@@ -8,10 +8,6 @@ app = Flask(__name__)
 # =========================
 # CONNEXION MYSQL RAILWAY
 # =========================
-MYSQLHOST="mysql.railway.internal"
-MYSQLUSER="root"
-MYSQLPASSWORD="sCgneJuWLNjpwXAzsMovlIAkJjDSAHtN"
-MYSQLDATABASE="railway"
 
 
 
