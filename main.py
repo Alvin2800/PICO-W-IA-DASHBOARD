@@ -68,14 +68,24 @@ def test_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+
         cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+
         cursor.close()
         conn.close()
 
-        return jsonify({"status": "success", "message": "Connexion MySQL OK"})
+        return jsonify({
+            "status": "success",
+            "message": "Connexion MySQL OK",
+            "result": result
+        })
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 @app.route("/data")
 def receive_data():
     try:
