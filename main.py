@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 import mysql.connector
 import os
 from datetime import datetime
+import pandas as pd
+from sklearn.ensemble import IsolationForest
 
 app = Flask(__name__)
 
@@ -142,6 +144,72 @@ def logs():
     conn.close()
 
     return jsonify(data)
+#integration IA
+#=======================
+#====================
+@app.route("/analyze")
+def analyze():
+
+    try:
+
+        conn = get_db_connection()
+
+        query = """
+            SELECT *
+            FROM fuel_measurements
+            ORDER BY timestamp ASC
+        """
+
+        df = pd.read_sql(query, conn)
+
+        conn.close()
+
+        # Vérification minimum données
+        if len(df) < 5:
+
+            return jsonify({
+                "status": "error",
+                "message": "Pas assez de données pour analyse"
+            })
+
+        # ===== MODELE IA =====
+
+        model = IsolationForest(
+            contamination=0.1,
+            random_state=42
+        )
+
+        # Analyse uniquement fuel_level
+        df["anomaly"] = model.fit_predict(df[["fuel_level"]])
+
+        # Conversion :
+        # -1 = anomalie
+        #  1 = normal
+
+        results = []
+
+        for _, row in df.iterrows():
+
+            results.append({
+
+                "id": int(row["id"]),
+                "timestamp": str(row["timestamp"]),
+                "fuel_level": float(row["fuel_level"]),
+                "status":
+                    "ANOMALIE"
+                    if row["anomaly"] == -1
+                    else "NORMAL"
+
+            })
+
+        return jsonify(results)
+
+    except Exception as e:
+
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
 
 # =========================
 # LANCEMENT
