@@ -5,3 +5,6 @@ scikit-learn
 pandas
 numpy
 google-generativeai
+streamlit
+requests
+plotly
