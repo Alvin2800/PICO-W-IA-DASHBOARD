@@ -4,3 +4,4 @@ mysql-connector-python
 scikit-learn
 pandas
 numpy
+openai
