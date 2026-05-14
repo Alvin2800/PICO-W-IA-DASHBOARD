@@ -4,8 +4,14 @@ import os
 from datetime import datetime
 import pandas as pd
 from sklearn.ensemble import IsolationForest
+from openai import OpenAI
+
+
 
 app = Flask(__name__)
+client = OpenAI(
+    api_key=os.environ.get("OPENAI_API_KEY")
+)
 
 # =========================
 # CONNEXION MYSQL RAILWAY
@@ -203,6 +209,106 @@ def analyze():
             })
 
         return jsonify(results)
+
+    except Exception as e:
+
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
+#===========================
+#=========================
+@app.route("/ai-report")
+def ai_report():
+
+    try:
+
+        conn = get_db_connection()
+
+        query = """
+            SELECT *
+            FROM fuel_measurements
+            ORDER BY timestamp ASC
+        """
+
+        df = pd.read_sql(query, conn)
+
+        conn.close()
+
+        if len(df) < 5:
+
+            return jsonify({
+                "status": "error",
+                "message": "Pas assez de données"
+            })
+
+        # ===== IA STATISTIQUE =====
+
+        model = IsolationForest(
+            contamination=0.1,
+            random_state=42
+        )
+
+        df["anomaly"] = model.fit_predict(df[["fuel_level"]])
+
+        anomalies = df[df["anomaly"] == -1]
+
+        if anomalies.empty:
+
+            return jsonify({
+                "report":
+                "Aucune anomalie détectée dans le système carburant."
+            })
+
+        # ===== TEXTE POUR CHATGPT =====
+
+        anomaly_text = ""
+
+        for _, row in anomalies.iterrows():
+
+            anomaly_text += f"""
+            Timestamp: {row['timestamp']}
+            Fuel Level: {row['fuel_level']}
+            """
+
+        # ===== IA GENERATIVE =====
+
+        response = client.chat.completions.create(
+
+            model="gpt-4.1-mini",
+
+            messages=[
+
+                {
+                    "role": "system",
+                    "content":
+                    """
+                    Tu es un système industriel intelligent spécialisé
+                    dans l’analyse de niveau carburant IoT.
+                    Explique les anomalies détectées
+                    de manière professionnelle.
+                    """
+                },
+
+                {
+                    "role": "user",
+                    "content":
+                    f"""
+                    Analyse ces anomalies carburant :
+
+                    {anomaly_text}
+                    """
+                }
+
+            ]
+
+        )
+
+        report = response.choices[0].message.content
+
+        return jsonify({
+            "report": report
+        })
 
     except Exception as e:
 
