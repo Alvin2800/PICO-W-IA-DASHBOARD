@@ -1,106 +1,90 @@
 from flask import Flask, request, jsonify
-import sqlite3
+import mysql.connector
+import os
 from datetime import datetime
 
 app = Flask(__name__)
 
+def get_db_connection():
+    return mysql.connector.connect(
+        host=os.environ.get("MYSQLHOST"),
+        user=os.environ.get("MYSQLUSER"),
+        password=os.environ.get("MYSQLPASSWORD"),
+        database=os.environ.get("MYSQLDATABASE"),
+        port=int(os.environ.get("MYSQLPORT", 3306))
+    )
+
 def init_db():
-    conn = sqlite3.connect("database.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS measurements (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        temperature REAL NOT NULL,
-        humidity REAL NOT NULL,
-        emergency INTEGER NOT NULL
-    )
+        CREATE TABLE IF NOT EXISTS fuel_measurements (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            timestamp DATETIME,
+            device_id VARCHAR(50),
+            fuel_level FLOAT
+        )
     """)
 
     conn.commit()
+    cursor.close()
     conn.close()
-
-init_db()
-
-def insert_data(timestamp, temperature, humidity, emergency):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO measurements (timestamp, temperature, humidity, emergency)
-        VALUES (?, ?, ?, ?)
-    """, (timestamp, temperature, humidity, emergency))
-
-    conn.commit()
-    conn.close()
-
-temperature = 0.0
-humidity = 0.0
-emergency = 0
 
 @app.route("/")
 def home():
-    return "IoT API Alvin Running"
+    return "Fuel Monitoring API running 🚀"
 
 @app.route("/data")
-def data():
-    global temperature, humidity, emergency
+def receive_data():
+    device_id = request.args.get("device_id", "pico_001")
+    fuel_level = request.args.get("fuel_level")
 
-    temperature = float(request.args.get("temp", 0))
-    humidity = float(request.args.get("hum", 0))
-    emergency = int(request.args.get("emergency", 0))
+    if fuel_level is None:
+        return jsonify({"error": "fuel_level manquant"}), 400
 
-    log_entry = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "temperature": temperature,
-        "humidity": humidity,
-        "emergency": emergency
-    }
+    try:
+        fuel_level = float(fuel_level)
+    except ValueError:
+        return jsonify({"error": "fuel_level invalide"}), 400
 
-    insert_data(
-        log_entry["timestamp"],
-        log_entry["temperature"],
-        log_entry["humidity"],
-        log_entry["emergency"]
-    )
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    print("Données reçues :", log_entry, flush=True)
+    cursor.execute("""
+        INSERT INTO fuel_measurements (timestamp, device_id, fuel_level)
+        VALUES (%s, %s, %s)
+    """, (datetime.now(), device_id, fuel_level))
 
-    return "OK", 200
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-@app.route("/status")
-def status():
     return jsonify({
-        "temperature": temperature,
-        "humidity": humidity,
-        "emergency": emergency
+        "status": "success",
+        "device_id": device_id,
+        "fuel_level": fuel_level
     })
 
 @app.route("/logs")
 def get_logs():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
-        SELECT timestamp, temperature, humidity, emergency
-        FROM measurements
-        ORDER BY id DESC
+        SELECT * FROM fuel_measurements
+        ORDER BY timestamp DESC
+        LIMIT 50
     """)
 
     rows = cursor.fetchall()
+
+    cursor.close()
     conn.close()
 
-    logs = []
-    for row in rows:
-        logs.append({
-            "timestamp": row[0],
-            "temperature": row[1],
-            "humidity": row[2],
-            "emergency": row[3]
-        })
-
-    return jsonify(logs)
+    return jsonify(rows)
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    init_db()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
