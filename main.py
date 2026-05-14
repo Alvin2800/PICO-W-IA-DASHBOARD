@@ -4,18 +4,9 @@ import os
 from datetime import datetime
 import pandas as pd
 from sklearn.ensemble import IsolationForest
-
-# OpenAI optionnel
-try:
-    from openai import OpenAI
-except ImportError:
-    OpenAI = None
+from openai import OpenAI
 
 app = Flask(__name__)
-
-# =========================
-# CONNEXION MYSQL RAILWAY
-# =========================
 
 def get_db_connection():
     return mysql.connector.connect(
@@ -26,15 +17,10 @@ def get_db_connection():
         port=int(os.environ.get("MYSQLPORT", 3306))
     )
 
-# =========================
-# INIT DB
-# =========================
-
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fuel_measurements (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -43,56 +29,35 @@ def init_db():
                 fuel_level FLOAT
             )
         """)
-
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ Table fuel_measurements OK")
-
+        print("Table fuel_measurements OK")
     except Exception as e:
-        print("❌ Erreur init DB :", e)
+        print("Erreur init DB :", e)
 
 init_db()
 
-# =========================
-# ROUTE ACCUEIL
-# =========================
-
 @app.route("/")
 def home():
-    return "PICO W IA DASHBOARD API RUNNING 🚀"
-
-# =========================
-# TEST DB
-# =========================
+    return "PICO W IA DASHBOARD API RUNNING"
 
 @app.route("/test-db")
 def test_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
-
         cursor.close()
         conn.close()
-
         return jsonify({
             "status": "success",
             "message": "Connexion MySQL OK",
             "result": result
         })
-
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-# =========================
-# RECEPTION DATA PICO W
-# =========================
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/data")
 def receive_data():
@@ -107,12 +72,10 @@ def receive_data():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
             INSERT INTO fuel_measurements (timestamp, device_id, fuel_level)
             VALUES (%s, %s, %s)
         """, (datetime.now(), device_id, fuel_level))
-
         conn.commit()
         cursor.close()
         conn.close()
@@ -124,74 +87,49 @@ def receive_data():
         })
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-# =========================
-# HISTORIQUE
-# =========================
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/logs")
 def logs():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-
         cursor.execute("""
             SELECT *
             FROM fuel_measurements
             ORDER BY timestamp DESC
             LIMIT 50
         """)
-
         data = cursor.fetchall()
-
         cursor.close()
         conn.close()
-
         return jsonify(data)
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-# =========================
-# ANALYSE ISOLATION FOREST
-# =========================
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/analyze")
 def analyze():
     try:
         conn = get_db_connection()
-
         query = """
             SELECT *
             FROM fuel_measurements
             ORDER BY timestamp ASC
         """
-
         df = pd.read_sql(query, conn)
         conn.close()
 
         if len(df) < 5:
             return jsonify({
                 "status": "error",
-                "message": "Pas assez de données pour lancer IsolationForest"
+                "message": "Pas assez de donnees pour lancer IsolationForest"
             })
 
-        model = IsolationForest(
-            contamination=0.15,
-            random_state=42
-        )
-
+        model = IsolationForest(contamination=0.15, random_state=42)
         df["anomaly"] = model.fit_predict(df[["fuel_level"]])
 
         results = []
-
         for _, row in df.iterrows():
             results.append({
                 "id": int(row["id"]),
@@ -204,24 +142,11 @@ def analyze():
         return jsonify(results)
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-# =========================
-# RAPPORT IA GENERATIVE
-# =========================
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/ai-report")
 def ai_report():
     try:
-        if OpenAI is None:
-            return jsonify({
-                "status": "error",
-                "message": "La librairie openai n'est pas installée"
-            }), 500
-
         api_key = os.environ.get("OPENAI_API_KEY")
 
         if not api_key:
@@ -233,44 +158,37 @@ def ai_report():
         client = OpenAI(api_key=api_key)
 
         conn = get_db_connection()
-
         query = """
             SELECT *
             FROM fuel_measurements
             ORDER BY timestamp ASC
         """
-
         df = pd.read_sql(query, conn)
         conn.close()
 
         if len(df) < 5:
             return jsonify({
                 "status": "error",
-                "message": "Pas assez de données pour générer un rapport IA"
+                "message": "Pas assez de donnees pour generer un rapport IA"
             })
 
-        model = IsolationForest(
-            contamination=0.15,
-            random_state=42
-        )
-
+        model = IsolationForest(contamination=0.15, random_state=42)
         df["anomaly"] = model.fit_predict(df[["fuel_level"]])
-
         anomalies = df[df["anomaly"] == -1]
 
         if anomalies.empty:
             return jsonify({
                 "status": "success",
-                "report": "Aucune anomalie carburant détectée. Le comportement du niveau de carburant semble stable."
+                "report": "Aucune anomalie carburant detectee. Le comportement semble stable."
             })
 
         anomaly_text = ""
 
         for _, row in anomalies.iterrows():
             anomaly_text += f"""
-Horodatage : {row['timestamp']}
-Appareil : {row['device_id']}
-Niveau carburant : {row['fuel_level']} %
+Timestamp: {row['timestamp']}
+Device: {row['device_id']}
+Fuel Level: {row['fuel_level']} percent
 ---
 """
 
@@ -280,21 +198,23 @@ Niveau carburant : {row['fuel_level']} %
                 {
                     "role": "system",
                     "content": """
-Tu es un assistant industriel spécialisé en IoT, supervision carburant,
-détection d'anomalies et maintenance intelligente.
-Tu dois expliquer les anomalies de façon claire, professionnelle et courte.
+You are an industrial IoT assistant specialized in fuel monitoring,
+anomaly detection and intelligent maintenance.
+Explain anomalies clearly, professionally and shortly.
+Avoid special accented characters in the response.
 """
                 },
                 {
                     "role": "user",
                     "content": f"""
-Voici les anomalies détectées par IsolationForest :
+Here are the anomalies detected by IsolationForest:
 
 {anomaly_text}
 
-Génère un rapport court avec :
-1. Résumé de la situation
-2. Interprétation possible
+Generate a short report in French without accented characters.
+Structure:
+1. Resume de la situation
+2. Interpretation possible
 3. Recommandation technique
 """
                 }
@@ -309,14 +229,7 @@ Génère un rapport court avec :
         })
 
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-# =========================
-# LANCEMENT LOCAL
-# =========================
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
