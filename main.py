@@ -64,58 +64,48 @@ def home():
 # =========================
 
 @app.route("/data")
-
 def receive_data():
-
-    device_id = request.args.get("device_id", "pico_001")
-    fuel_level = request.args.get("fuel_level")
-
-    if fuel_level is None:
-
-        return jsonify({
-            "error": "fuel_level manquant"
-        }), 400
-
     try:
+        device_id = request.args.get("device_id", "pico_001")
+        fuel_level = request.args.get("fuel_level")
+
+        if fuel_level is None:
+            return jsonify({"error": "fuel_level manquant"}), 400
 
         fuel_level = float(fuel_level)
 
-    except:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fuel_measurements (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                timestamp DATETIME,
+                device_id VARCHAR(50),
+                fuel_level FLOAT
+            )
+        """)
+
+        cursor.execute("""
+            INSERT INTO fuel_measurements (timestamp, device_id, fuel_level)
+            VALUES (%s, %s, %s)
+        """, (datetime.now(), device_id, fuel_level))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
 
         return jsonify({
-            "error": "fuel_level invalide"
-        }), 400
+            "status": "success",
+            "device_id": device_id,
+            "fuel_level": fuel_level
+        })
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-
-        INSERT INTO fuel_measurements
-        (timestamp, device_id, fuel_level)
-
-        VALUES (%s, %s, %s)
-
-    """, (
-
-        datetime.now(),
-        device_id,
-        fuel_level
-
-    ))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return jsonify({
-
-        "status": "success",
-        "device_id": device_id,
-        "fuel_level": fuel_level
-
-    })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 # =========================
 # ROUTE HISTORIQUE
