@@ -224,21 +224,33 @@ def ai_report():
 
         genai.configure(api_key=api_key)
 
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+
         conn = get_db_connection()
 
-        query = """
-            SELECT *
-            FROM fuel_measurements
-            ORDER BY timestamp ASC
-        """
+        if start_date and end_date:
+            query = """
+                SELECT *
+                FROM fuel_measurements
+                WHERE DATE(timestamp) BETWEEN %s AND %s
+                ORDER BY timestamp ASC
+            """
+            df = pd.read_sql(query, conn, params=(start_date, end_date))
+        else:
+            query = """
+                SELECT *
+                FROM fuel_measurements
+                ORDER BY timestamp ASC
+            """
+            df = pd.read_sql(query, conn)
 
-        df = pd.read_sql(query, conn)
         conn.close()
 
         if len(df) < 5:
             return jsonify({
                 "status": "error",
-                "message": "Pas assez de donnees pour generer un rapport IA"
+                "message": "Pas assez de donnees pour generer un rapport IA sur cette periode"
             })
 
         model_iforest = IsolationForest(
@@ -247,13 +259,12 @@ def ai_report():
         )
 
         df["anomaly"] = model_iforest.fit_predict(df[["fuel_level"]])
-
         anomalies = df[df["anomaly"] == -1]
 
         if anomalies.empty:
             return jsonify({
                 "status": "success",
-                "report": "Aucune anomalie carburant detectee. Le niveau de carburant semble stable."
+                "report": "Aucune anomalie carburant detectee sur la periode selectionnee."
             })
 
         anomaly_text = ""
@@ -266,9 +277,13 @@ Niveau carburant: {row['fuel_level']} %
 ---
 """
 
+        periode_text = f"Periode analysee: du {start_date} au {end_date}" if start_date and end_date else "Periode analysee: toutes les donnees disponibles"
+
         prompt = f"""
 Tu es un assistant industriel specialise en IoT, supervision carburant,
 detection d'anomalies et maintenance intelligente.
+
+{periode_text}
 
 Voici les anomalies detectees par IsolationForest:
 
@@ -284,14 +299,13 @@ Le rapport doit etre clair, professionnel et facile a comprendre.
 """
 
         model_gemini = genai.GenerativeModel("gemini-2.5-flash")
-
         response = model_gemini.generate_content(prompt)
-
-        report = response.text
 
         return jsonify({
             "status": "success",
-            "report": report
+            "start_date": start_date,
+            "end_date": end_date,
+            "report": response.text
         })
 
     except Exception as e:
